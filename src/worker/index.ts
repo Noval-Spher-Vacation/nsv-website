@@ -35,6 +35,28 @@ type Env = {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// ---------------- BASIC SYSTEM ROUTES ----------------
+
+// Health check (for browser / uptime / sanity)
+app.get("/api/health", (c) => {
+  return c.text("ok");
+});
+
+// API root check
+app.get("/api", (c) => {
+  return c.json({
+    status: "api alive",
+    service: "nsv-api",
+  });
+});
+
+// Optional: homepage API ping
+app.get("/ping", (c) => {
+  return c.json({ pong: true });
+});
+
+// -----------------------------------------------------
+
 // Auth endpoints
 app.get("/api/oauth/google/redirect_url", async (c) => {
   const redirectUrl = await getOAuthRedirectUrl("google", {
