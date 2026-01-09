@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@getmocha/users-service/react";
 import { AuthProvider as CustomAuthProvider } from "@/react-app/hooks/useAuth";
 import HomePage from "@/react-app/pages/Home";
@@ -34,6 +34,7 @@ import CancellationPolicyPage from "@/react-app/pages/CancellationPolicy";
 import LegalDocumentsPage from "@/react-app/pages/admin/LegalDocuments";
 import InfluencerRequestsPage from "@/react-app/pages/admin/InfluencerRequests";
 import InfluencersPage from "@/react-app/pages/admin/Influencers";
+import Login from "@/react-app/pages/Login";
 
 export default function App() {
   return (
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="/admin/legal" element={<LegalDocumentsPage />} />
             <Route path="/admin/influencer-requests" element={<InfluencerRequestsPage />} />
             <Route path="/admin/influencers" element={<InfluencersPage />} />
+            <Route path="/auth" element={<Login />} />
           </Routes>
         </Router>
       </CustomAuthProvider>

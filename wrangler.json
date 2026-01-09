@@ -24,15 +24,14 @@
 		}
 	],
 	"r2_buckets": [
-		{
-			"binding": "R2_BUCKET",
-			"bucket_name": "novelsphere-media"
-      "preview_bucket_name": "novelsphere-media-dev"
-		},
-		{
-			"binding": "R2_LEGAL",
-			"bucket_name": "novelsphere-legal"
-      "preview_bucket_name": "novelsphere-media-dev"
-		}
-	]
-}
+  {
+    "binding": "R2_BUCKET",
+    "bucket_name": "novelsphere-media",
+    "preview_bucket_name": "novelsphere-media-dev"
+  },
+  {
+    "binding": "R2_LEGAL",
+    "bucket_name": "novelsphere-legal",
+    "preview_bucket_name": "novelsphere-legal-dev"
+  }
+]

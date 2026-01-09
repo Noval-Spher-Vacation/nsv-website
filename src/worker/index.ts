@@ -1361,4 +1361,6 @@ app.get("/api/files/*", async (c) => {
   }
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+};
