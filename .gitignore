@@ -5,3 +5,4 @@ node_modules/
 worker-configuration.d.ts
 tsconfig.worker.tsbuildinfo
 tsconfig.worker.tsbuildinfo
+.env
