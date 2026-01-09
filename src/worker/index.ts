@@ -23,6 +23,15 @@ import {
   updateInfluencerSchema,
   generateReferralCode,
 } from "./influencer";
+import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
+
+type Env = {
+  DB: D1Database;
+  R2_BUCKET: R2Bucket;
+  R2_LEGAL: R2Bucket;
+  MOCHA_USERS_SERVICE_API_URL: string;
+  MOCHA_USERS_SERVICE_API_KEY: string;
+};
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -1281,7 +1290,8 @@ app.post("/api/admin/legal/:type/upload-pdf", authMiddleware, adminMiddleware, r
   const timestamp = Date.now();
   const key = `legal/${type}/${timestamp}-${file.name}`;
 
-  await c.env.R2_BUCKET.put(key, file.stream(), {
+  const bytes = await file.arrayBuffer();
+  await c.env.R2_BUCKET.put(key, bytes, {
     httpMetadata: {
       contentType: file.type,
       contentDisposition: `inline; filename="${file.name}"`,
@@ -1319,10 +1329,10 @@ app.get("/api/files/*", async (c) => {
     }
 
     const headers = new Headers();
-    object.writeHttpMetadata(headers);
+    object.writeHttpMetadata(headers as any);
     headers.set("etag", object.httpEtag);
     
-    return c.body(object.body, { headers });
+    return new Response(object.body as unknown as BodyInit, { headers });
   } catch (error) {
     console.error("Error fetching file:", error);
     return c.json({ error: "Error fetching file" }, 500);
