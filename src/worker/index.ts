@@ -23,39 +23,8 @@ import {
   updateInfluencerSchema,
   generateReferralCode,
 } from "./influencer";
-import type { D1Database, R2Bucket } from "@cloudflare/workers-types";
-
-type Env = {
-  DB: D1Database;
-  R2_BUCKET: R2Bucket;
-  R2_LEGAL: R2Bucket;
-  MOCHA_USERS_SERVICE_API_URL: string;
-  MOCHA_USERS_SERVICE_API_KEY: string;
-};
 
 const app = new Hono<{ Bindings: Env }>();
-
-// ---------------- BASIC SYSTEM ROUTES ----------------
-
-// Health check (for browser / uptime / sanity)
-app.get("/api/health", (c) => {
-  return c.text("ok");
-});
-
-// API root check
-app.get("/api", (c) => {
-  return c.json({
-    status: "api alive",
-    service: "nsv-api",
-  });
-});
-
-// Optional: homepage API ping
-app.get("/ping", (c) => {
-  return c.json({ pong: true });
-});
-
-// -----------------------------------------------------
 
 // Auth endpoints
 app.get("/api/oauth/google/redirect_url", async (c) => {
@@ -1312,8 +1281,7 @@ app.post("/api/admin/legal/:type/upload-pdf", authMiddleware, adminMiddleware, r
   const timestamp = Date.now();
   const key = `legal/${type}/${timestamp}-${file.name}`;
 
-  const bytes = await file.arrayBuffer();
-  await c.env.R2_BUCKET.put(key, bytes, {
+  await c.env.R2_BUCKET.put(key, file.stream(), {
     httpMetadata: {
       contentType: file.type,
       contentDisposition: `inline; filename="${file.name}"`,
@@ -1351,16 +1319,14 @@ app.get("/api/files/*", async (c) => {
     }
 
     const headers = new Headers();
-    object.writeHttpMetadata(headers as any);
+    object.writeHttpMetadata(headers);
     headers.set("etag", object.httpEtag);
     
-    return new Response(object.body as unknown as BodyInit, { headers });
+    return c.body(object.body, { headers });
   } catch (error) {
     console.error("Error fetching file:", error);
     return c.json({ error: "Error fetching file" }, 500);
   }
 });
 
-export default {
-  fetch: app.fetch,
-};
+export default app;

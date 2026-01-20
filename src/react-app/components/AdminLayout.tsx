@@ -13,6 +13,7 @@ import {
   LogOut,
   UserCog,
   TrendingUp,
+  CreditCard,
 } from "lucide-react";
 
 interface AdminLayoutProps {
@@ -35,6 +36,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { name: "Influencer Requests", href: "/admin/influencer-requests", icon: Users, roles: ["founder", "admin"] },
     { name: "Team & Roles", href: "/admin/team", icon: UserCog, roles: ["founder"] },
     { name: "Settings", href: "/admin/settings", icon: Settings, roles: ["founder", "admin"] },
+    { name: "Payment Settings", href: "/admin/payments", icon: CreditCard, roles: ["founder", "admin"] },
     { name: "Office & Contact", href: "/admin/office", icon: MapPin, roles: ["founder", "admin"] },
     { name: "Legal & Policies", href: "/admin/legal", icon: BookOpen, roles: ["founder", "admin"] },
   ];

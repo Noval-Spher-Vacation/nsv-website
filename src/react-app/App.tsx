@@ -1,6 +1,7 @@
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router";
 import { AuthProvider } from "@getmocha/users-service/react";
 import { AuthProvider as CustomAuthProvider } from "@/react-app/hooks/useAuth";
+import CustomCursor from "@/react-app/components/CustomCursor";
 import HomePage from "@/react-app/pages/Home";
 import AboutPage from "@/react-app/pages/About";
 import DestinationsPage from "@/react-app/pages/Destinations";
@@ -34,14 +35,14 @@ import CancellationPolicyPage from "@/react-app/pages/CancellationPolicy";
 import LegalDocumentsPage from "@/react-app/pages/admin/LegalDocuments";
 import InfluencerRequestsPage from "@/react-app/pages/admin/InfluencerRequests";
 import InfluencersPage from "@/react-app/pages/admin/Influencers";
-import Login from "@/react-app/pages/Login";
-import RequireAuth from "@/react-app/components/RequireAuth";
+import PaymentSettingsPage from "@/react-app/pages/admin/PaymentSettings";
 
 export default function App() {
   return (
     <AuthProvider>
       <CustomAuthProvider>
         <Router>
+          <CustomCursor />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutPage />} />
@@ -61,22 +62,22 @@ export default function App() {
             <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
             <Route path="/cancellation-policy" element={<CancellationPolicyPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
-            <Route path="/admin" element={<RequireAuth><AdminDashboard /></RequireAuth>} />
-            <Route path="/admin/crm" element={<RequireAuth><CRMPage /></RequireAuth>} />
-            <Route path="/admin/crm/leads" element={<RequireAuth><LeadsPage /></RequireAuth>} />
-            <Route path="/admin/crm/leads/:id" element={<RequireAuth><LeadDetailPage /></RequireAuth>} />
-            <Route path="/admin/team" element={<RequireAuth><TeamPage /></RequireAuth>} />
-            <Route path="/admin/destinations" element={<RequireAuth><AdminDestinations /></RequireAuth>} />
-            <Route path="/admin/packages" element={<RequireAuth><AdminPackages /></RequireAuth>} />
-            <Route path="/admin/offers" element={<RequireAuth><AdminOffers /></RequireAuth>} />
-            <Route path="/admin/testimonials" element={<RequireAuth><AdminTestimonials /></RequireAuth>} />
-            <Route path="/admin/enquiries" element={<RequireAuth><AdminEnquiries /></RequireAuth>} />
-            <Route path="/admin/settings" element={<RequireAuth><AdminSettings /></RequireAuth>} />
-            <Route path="/admin/office" element={<RequireAuth><OfficeSettingsPage /></RequireAuth>} />
-            <Route path="/admin/legal" element={<RequireAuth><LegalDocumentsPage /></RequireAuth>} />
-            <Route path="/admin/influencer-requests" element={<RequireAuth><InfluencerRequestsPage /></RequireAuth>} />
-            <Route path="/admin/influencers" element={<RequireAuth><InfluencersPage /></RequireAuth>} />
-            <Route path="/auth" element={<Login />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/crm" element={<CRMPage />} />
+            <Route path="/admin/crm/leads" element={<LeadsPage />} />
+            <Route path="/admin/crm/leads/:id" element={<LeadDetailPage />} />
+            <Route path="/admin/team" element={<TeamPage />} />
+            <Route path="/admin/destinations" element={<AdminDestinations />} />
+            <Route path="/admin/packages" element={<AdminPackages />} />
+            <Route path="/admin/offers" element={<AdminOffers />} />
+            <Route path="/admin/testimonials" element={<AdminTestimonials />} />
+            <Route path="/admin/enquiries" element={<AdminEnquiries />} />
+            <Route path="/admin/settings" element={<AdminSettings />} />
+            <Route path="/admin/office" element={<OfficeSettingsPage />} />
+            <Route path="/admin/legal" element={<LegalDocumentsPage />} />
+            <Route path="/admin/influencer-requests" element={<InfluencerRequestsPage />} />
+            <Route path="/admin/influencers" element={<InfluencersPage />} />
+            <Route path="/admin/payments" element={<PaymentSettingsPage />} />
           </Routes>
         </Router>
       </CustomAuthProvider>

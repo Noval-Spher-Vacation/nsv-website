@@ -1,37 +1,27 @@
 {
-	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "nsv-api",
-	"main": "src/worker/index.ts",
-	"compatibility_date": "2025-06-17",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"observability": {
-		"enabled": true
-	},
-	"upload_source_maps": true,
-	"assets": {
-		"directory": "./dist/client",
-		"not_found_handling": "single-page-application",
-    "exclude": ["/api/*"]
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "novelsphere_db",
-			"database_id": "471c2e68-a93a-4bdb-ae52-ed86f21f417e",
-			"remote": true
-		}
-	],
-	"r2_buckets": [
-  {
-    "binding": "R2_BUCKET",
-    "bucket_name": "novelsphere-media",
-    "preview_bucket_name": "novelsphere-media-dev"
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "019ba1ec-524c-75a2-bc69-75c022fc6e34",
+  "main": "./src/worker/index.ts",
+  "compatibility_date": "2025-06-17",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true
   },
-  {
-    "binding": "R2_LEGAL",
-    "bucket_name": "novelsphere-legal",
-    "preview_bucket_name": "novelsphere-legal-dev"
-  }
-]
+  "upload_source_maps": true,
+  "assets": {
+    "not_found_handling": "single-page-application"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "019ba1ec-524c-75a2-bc69-75c022fc6e34",
+      "database_id": "019ba1ec-524c-75a2-bc69-75c022fc6e34"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2_BUCKET",
+      "bucket_name": "019ba1ec-524c-75a2-bc69-75c022fc6e34"
+    }
+  ]
+}
