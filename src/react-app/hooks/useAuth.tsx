@@ -11,7 +11,7 @@ interface AuthContextType {
   isAdmin: boolean;
   role: string | null;
   loading: boolean;
-  logout: () => Promise<void>;
+  accessDenied: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -21,6 +21,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     checkAuth();
@@ -28,10 +29,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async () => {
     try {
-      const response = await fetch("/api/users/me");
+      const response = await fetch("/api/me");
       if (response.ok) {
         const userData = await response.json();
         setUser(userData);
+        setAccessDenied(false);
 
         const adminCheck = await fetch("/api/admin/check");
         if (adminCheck.ok) {
@@ -39,24 +41,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setIsAdmin(adminData.isAdmin);
           setRole(adminData.role);
         }
+        return;
+      }
+
+      if (response.status === 401 || response.status === 403) {
+        setUser(null);
+        setIsAdmin(false);
+        setRole(null);
+        setAccessDenied(true);
       }
     } catch (error) {
-      console.error("Auth check failed:", error);
+      console.error("Access check failed:", error);
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = async () => {
-    await fetch("/api/logout");
-    setUser(null);
-    setIsAdmin(false);
-    setRole(null);
-    window.location.href = "/";
-  };
-
   return (
-    <AuthContext.Provider value={{ user, isAdmin, role, loading, logout }}>
+    <AuthContext.Provider value={{ user, isAdmin, role, loading, accessDenied }}>
       {children}
     </AuthContext.Provider>
   );

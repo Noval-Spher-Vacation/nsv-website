@@ -10,7 +10,6 @@ import {
   MessageSquare,
   BookOpen,
   Settings,
-  LogOut,
   UserCog,
   TrendingUp,
   CreditCard,
@@ -22,7 +21,7 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const location = useLocation();
-  const { user, role, logout } = useAuth();
+  const { user, role } = useAuth();
 
   const navigation = [
     { name: "Dashboard", href: "/admin", icon: LayoutDashboard, roles: ["founder", "admin", "support", "bookings", "marketing"] },
@@ -79,19 +78,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </nav>
 
           <div className="p-4 border-t border-gray-800">
-            <div className="flex items-center mb-3">
+            <div className="flex items-center">
               <div className="flex-1">
                 <p className="text-sm font-medium">{user?.name || user?.email}</p>
                 <p className="text-xs text-gray-400 capitalize">{role}</p>
+                <p className="text-[11px] text-gray-500 mt-1">Managed by Cloudflare Access</p>
               </div>
             </div>
-            <button
-              onClick={logout}
-              className="flex items-center w-full px-4 py-2 text-sm text-gray-300 hover:bg-gray-800 rounded-lg transition"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              Logout
-            </button>
           </div>
         </div>
       </div>

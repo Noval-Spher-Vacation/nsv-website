@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import Header from "@/react-app/components/Header";
 import Footer from "@/react-app/components/Footer";
@@ -61,13 +61,97 @@ export default function HomePage() {
   const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
   const [email, setEmail] = useState("");
+  const [enableHeroTilt, setEnableHeroTilt] = useState(false);
+  const parallaxRefs = useRef<HTMLDivElement[]>([]);
+  const parallaxRaf = useRef<number | null>(null);
+  const heroCardRef = useRef<HTMLDivElement | null>(null);
+
+  const particles = useMemo(
+    () =>
+      Array.from({ length: 18 }, (_, index) => ({
+        id: index,
+        top: `${(index * 17) % 100}%`,
+        left: `${(index * 29) % 100}%`,
+        delay: `${(index % 6) * 0.8}s`,
+        duration: `${12 + (index % 5) * 3}s`,
+        size: 4 + (index % 4) * 2,
+        opacity: 0.3 + (index % 4) * 0.12,
+      })),
+    []
+  );
 
   useEffect(() => {
     fetchDestinations();
     fetchPackages();
     fetchTestimonials();
     fetchOffers();
+
+    setEnableHeroTilt(window.matchMedia("(pointer: fine)").matches);
   }, []);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("is-visible");
+          }
+        });
+      },
+      { threshold: 0.2 }
+    );
+
+    const targets = Array.from(document.querySelectorAll(".section-reveal"));
+    targets.forEach((target) => observer.observe(target));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reducedMotion) {
+      return undefined;
+    }
+
+    const update = () => {
+      const scrollY = window.scrollY;
+      parallaxRefs.current.forEach((element) => {
+        const speed = Number.parseFloat(element.dataset.speed || "0.12");
+        element.style.transform = `translate3d(0, ${scrollY * speed}px, 0)`;
+      });
+      parallaxRaf.current = null;
+    };
+
+    const onScroll = () => {
+      if (parallaxRaf.current !== null) {
+        return;
+      }
+      parallaxRaf.current = window.requestAnimationFrame(update);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+    update();
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (parallaxRaf.current !== null) {
+        window.cancelAnimationFrame(parallaxRaf.current);
+      }
+    };
+  }, []);
+
+  const registerParallax = (element: HTMLDivElement | null) => {
+    if (element && !parallaxRefs.current.includes(element)) {
+      parallaxRefs.current.push(element);
+    }
+  };
 
   const fetchDestinations = async () => {
     const response = await fetch("/api/destinations");
@@ -99,46 +183,103 @@ export default function HomePage() {
     setEmail("");
   };
 
+  const handleHeroMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (!enableHeroTilt || !heroCardRef.current) {
+      return;
+    }
+    const rect = heroCardRef.current.getBoundingClientRect();
+    const x = (event.clientX - rect.left) / rect.width - 0.5;
+    const y = (event.clientY - rect.top) / rect.height - 0.5;
+    const rotateX = (-y * 8).toFixed(2);
+    const rotateY = (x * 12).toFixed(2);
+    heroCardRef.current.style.transform = `perspective(1200px) rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+  };
+
+  const handleHeroLeave = () => {
+    if (!heroCardRef.current) {
+      return;
+    }
+    heroCardRef.current.style.transform = "perspective(1200px) rotateX(0deg) rotateY(0deg)";
+  };
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-[#07060c] text-white overflow-x-hidden grain">
       <Header />
       <WhatsAppButton />
 
       {/* Hero Section */}
-      <section className="relative h-[600px] md:h-[700px] bg-gradient-to-br from-primary-900 via-primary-800 to-primary-600 overflow-hidden">
+      <section className="relative min-h-[720px] md:min-h-[820px] overflow-hidden">
         <div
-          className="absolute inset-0 opacity-70"
+          ref={registerParallax}
+          data-speed="0.18"
+          className="absolute inset-0 opacity-60 scale-110"
           style={{
             backgroundImage: "url('https://images.unsplash.com/photo-1488646953014-85cb44e25828?w=1600')",
             backgroundSize: "cover",
             backgroundPosition: "center",
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-neon-pink/20 via-transparent to-neon-purple/20 animate-pulse-slow" />
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0b0914]/30 via-[#0b0914]/75 to-[#07060c]" />
+        <div
+          ref={registerParallax}
+          data-speed="0.08"
+          className="absolute -top-32 -left-12 h-80 w-80 rounded-full bg-[radial-gradient(circle,rgba(255,105,180,0.45),rgba(255,105,180,0))] blur-3xl"
+        />
+        <div
+          ref={registerParallax}
+          data-speed="0.14"
+          className="absolute -bottom-10 right-0 h-[420px] w-[420px] rounded-full bg-[radial-gradient(circle,rgba(140,60,255,0.55),rgba(140,60,255,0))] blur-3xl"
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.08),transparent_45%)]" />
+        <div className="particle-field">
+          {particles.map((particle) => (
+            <span
+              key={particle.id}
+              className="particle"
+              style={{
+                top: particle.top,
+                left: particle.left,
+                width: `${particle.size}px`,
+                height: `${particle.size}px`,
+                opacity: particle.opacity,
+                animationDelay: particle.delay,
+                animationDuration: particle.duration,
+              }}
+            />
+          ))}
+        </div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center">
-          <div className="max-w-3xl backdrop-blur-sm bg-white/5 p-12 rounded-3xl border border-white/20 shadow-2xl animate-float">
-            <h1 className="text-5xl md:text-7xl font-bold text-gray-900 mb-6 leading-tight drop-shadow-lg">
+          <div
+            ref={heroCardRef}
+            onMouseMove={handleHeroMove}
+            onMouseLeave={handleHeroLeave}
+            className="max-w-3xl glass-panel p-10 md:p-12 rounded-3xl border border-white/10 shadow-[0_0_80px_rgba(255,45,148,0.3)] transition-transform duration-300"
+          >
+            <p className="uppercase text-xs tracking-[0.45em] text-white/60 mb-4">
+              Crafted Luxury Escapes
+            </p>
+            <h1 className="neon-title text-5xl md:text-7xl font-semibold mb-6 leading-tight">
               Discover Your Next Journey
             </h1>
-            <p className="text-xl md:text-2xl text-gray-900 mb-8">
+            <p className="text-lg md:text-2xl text-white/80 mb-8">
               Personalized trips across Asia, Europe, UAE, Australia & Worldwide.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
                 to="/packages"
-                className="bg-white/90 backdrop-blur-md text-primary-600 px-8 py-4 rounded-full font-semibold hover:bg-white transition-all duration-300 shadow-neon-pink hover:shadow-neon-purple inline-block text-center transform hover:scale-105 hover:-translate-y-1"
+                className="cta-glow bg-gradient-to-r from-[#ff2d94] to-[#b44bff] text-black px-8 py-4 rounded-full font-semibold inline-flex items-center justify-center"
               >
                 Plan My Trip
               </Link>
               <Link
                 to="/contact"
-                className="bg-white/10 backdrop-blur-md border-2 border-white/50 text-gray-900 px-8 py-4 rounded-full font-semibold hover:bg-white/20 transition-all duration-300 inline-block text-center transform hover:scale-105 hover:-translate-y-1"
+                className="cta-glow bg-white/10 border border-white/30 text-white px-8 py-4 rounded-full font-semibold inline-flex items-center justify-center"
               >
                 Get a Free Quote
               </Link>
               <a
                 href="https://wa.me/918248596124"
-                className="bg-green-500/90 backdrop-blur-md text-white px-8 py-4 rounded-full font-semibold hover:bg-green-600 transition-all duration-300 shadow-lg inline-block text-center transform hover:scale-105 hover:-translate-y-1"
+                className="cta-glow bg-emerald-400/90 text-black px-8 py-4 rounded-full font-semibold inline-flex items-center justify-center"
               >
                 WhatsApp Us
               </a>
@@ -148,122 +289,125 @@ export default function HomePage() {
       </section>
 
       {/* Why Choose Us */}
-      <section className="py-16 bg-gradient-to-b from-gray-50 to-white relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-50/30 via-transparent to-purple-50/30" />
+      <section className="py-20 relative section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(255,92,184,0.12),transparent_50%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-primary-600 to-purple-600 bg-clip-text text-transparent mb-4">Why Choose Us</h2>
-            <p className="text-lg text-gray-600">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">
+              Why Choose Us
+            </h2>
+            <p className="text-lg text-white/70">
               Your trusted partner for unforgettable travel experiences
             </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-            <div className="backdrop-blur-lg bg-white/70 p-8 rounded-2xl shadow-lg hover:shadow-neon-pink transition-all duration-300 text-center group transform hover:scale-105 hover:-translate-y-2 border border-white/50">
-              <div className="w-16 h-16 bg-gradient-to-br from-primary-400 to-primary-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
+            <div className="glass-panel neon-hover p-8 rounded-2xl text-center group">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#ff5cb8] to-[#7f4dff] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
                 <Shield className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">24/7 Travel Support</h3>
-              <p className="text-gray-600">Round-the-clock assistance for a worry-free journey</p>
+              <h3 className="text-xl font-semibold text-white mb-2">24/7 Travel Support</h3>
+              <p className="text-white/70">Round-the-clock assistance for a worry-free journey</p>
             </div>
-            <div className="backdrop-blur-lg bg-white/70 p-8 rounded-2xl shadow-lg hover:shadow-neon-pink transition-all duration-300 text-center group transform hover:scale-105 hover:-translate-y-2 border border-white/50">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
+            <div className="glass-panel neon-hover p-8 rounded-2xl text-center group">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#22d3ee] to-[#0ea5e9] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
                 <Award className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Best Price Guarantee</h3>
-              <p className="text-gray-600">Competitive pricing with transparent, no hidden costs</p>
+              <h3 className="text-xl font-semibold text-white mb-2">Best Price Guarantee</h3>
+              <p className="text-white/70">Competitive pricing with transparent, no hidden costs</p>
             </div>
-            <div className="backdrop-blur-lg bg-white/70 p-8 rounded-2xl shadow-lg hover:shadow-neon-pink transition-all duration-300 text-center group transform hover:scale-105 hover:-translate-y-2 border border-white/50">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
+            <div className="glass-panel neon-hover p-8 rounded-2xl text-center group">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#a855f7] to-[#6366f1] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
                 <CheckCircle2 className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-white mb-2">
                 100% Customizable Itineraries
               </h3>
-              <p className="text-gray-600">Tailor-made trips designed around your preferences</p>
+              <p className="text-white/70">Tailor-made trips designed around your preferences</p>
             </div>
-            <div className="backdrop-blur-lg bg-white/70 p-8 rounded-2xl shadow-lg hover:shadow-neon-pink transition-all duration-300 text-center group transform hover:scale-105 hover:-translate-y-2 border border-white/50">
-              <div className="w-16 h-16 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
+            <div className="glass-panel neon-hover p-8 rounded-2xl text-center group">
+              <div className="w-16 h-16 bg-gradient-to-br from-[#fb7185] to-[#f97316] rounded-full flex items-center justify-center mx-auto mb-4 group-hover:animate-float shadow-lg">
                 <Users className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              <h3 className="text-xl font-semibold text-white mb-2">
                 Professional Team of 20 Travel Specialists
               </h3>
-              <p className="text-gray-600">Expert guidance from experienced travel consultants</p>
+              <p className="text-white/70">Expert guidance from experienced travel consultants</p>
             </div>
           </div>
         </div>
       </section>
 
       {/* Services Highlights */}
-      <section className="py-16 bg-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-pink-50/50 via-white to-purple-50/50" />
+      <section className="py-20 relative overflow-hidden section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_20%,rgba(130,87,255,0.2),transparent_55%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-4">Our Services</h2>
-            <p className="text-lg text-gray-600">Comprehensive travel solutions for every need</p>
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">Our Services</h2>
+            <p className="text-lg text-white/70">Comprehensive travel solutions for every need</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <Link
               to="/services#visa"
-              className="group p-6 backdrop-blur-md bg-gradient-to-br from-pink-500/10 to-pink-600/20 rounded-2xl hover:shadow-xl transition-all duration-300 border border-pink-200/50 hover:border-pink-400/50 transform hover:scale-105 hover:-translate-y-2"
+              className="glass-panel neon-hover group p-6 rounded-2xl"
             >
-              <FileText className="w-12 h-12 text-pink-600 mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Visa Assistance</h3>
-              <p className="text-gray-600">Complete visa support and documentation</p>
+              <FileText className="w-12 h-12 text-[#ff5cb8] mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
+              <h3 className="text-xl font-semibold text-white mb-2">Visa Assistance</h3>
+              <p className="text-white/70">Complete visa support and documentation</p>
             </Link>
             <Link
               to="/services#hotel"
-              className="group p-6 backdrop-blur-md bg-gradient-to-br from-green-500/10 to-green-600/20 rounded-2xl hover:shadow-xl transition-all duration-300 border border-green-200/50 hover:border-green-400/50 transform hover:scale-105 hover:-translate-y-2"
+              className="glass-panel neon-hover group p-6 rounded-2xl"
             >
-              <Hotel className="w-12 h-12 text-green-600 mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Hotel Booking</h3>
-              <p className="text-gray-600">Premium accommodations worldwide</p>
+              <Hotel className="w-12 h-12 text-[#22d3ee] mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
+              <h3 className="text-xl font-semibold text-white mb-2">Hotel Booking</h3>
+              <p className="text-white/70">Premium accommodations worldwide</p>
             </Link>
             <Link
               to="/services#transport"
-              className="group p-6 backdrop-blur-md bg-gradient-to-br from-purple-500/10 to-purple-600/20 rounded-2xl hover:shadow-xl transition-all duration-300 border border-purple-200/50 hover:border-purple-400/50 transform hover:scale-105 hover:-translate-y-2"
+              className="glass-panel neon-hover group p-6 rounded-2xl"
             >
-              <Car className="w-12 h-12 text-purple-600 mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Transport & Transfers</h3>
-              <p className="text-gray-600">Comfortable and reliable transportation</p>
+              <Car className="w-12 h-12 text-[#a855f7] mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
+              <h3 className="text-xl font-semibold text-white mb-2">Transport & Transfers</h3>
+              <p className="text-white/70">Comfortable and reliable transportation</p>
             </Link>
             <Link
               to="/services#insurance"
-              className="group p-6 backdrop-blur-md bg-gradient-to-br from-orange-500/10 to-orange-600/20 rounded-2xl hover:shadow-xl transition-all duration-300 border border-orange-200/50 hover:border-orange-400/50 transform hover:scale-105 hover:-translate-y-2"
+              className="glass-panel neon-hover group p-6 rounded-2xl"
             >
-              <Shield className="w-12 h-12 text-orange-600 mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Travel Insurance</h3>
-              <p className="text-gray-600">Comprehensive coverage for peace of mind</p>
+              <Shield className="w-12 h-12 text-[#fb7185] mb-4 group-hover:scale-110 transition-transform duration-300 drop-shadow-lg" />
+              <h3 className="text-xl font-semibold text-white mb-2">Travel Insurance</h3>
+              <p className="text-white/70">Comprehensive coverage for peace of mind</p>
             </Link>
           </div>
         </div>
       </section>
 
       {/* Featured Destinations */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <section className="py-20 relative section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_70%,rgba(34,211,238,0.14),transparent_55%)]" />
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">
               Featured Destinations
             </h2>
-            <p className="text-lg text-gray-600">Explore the world's most captivating places</p>
+            <p className="text-lg text-white/70">Explore the world's most captivating places</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {destinations.map((destination) => (
               <Link
                 key={destination.id}
                 to={`/destinations/${destination.slug}`}
-                className="group relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition h-80"
+                className="group relative overflow-hidden rounded-2xl ring-1 ring-white/10 neon-hover h-80"
               >
                 <img
                   src={destination.image_url}
                   alt={destination.name}
                   className="w-full h-full object-cover group-hover:scale-110 transition duration-500"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent flex items-end">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-transparent flex items-end">
                   <div className="p-6 text-white w-full">
                     <h3 className="text-2xl font-bold mb-1">{destination.name}</h3>
-                    <p className="text-sm text-gray-200 flex items-center">
+                    <p className="text-sm text-white/80 flex items-center">
                       <MapPin className="w-4 h-4 mr-1" />
                       {destination.region}
                     </p>
@@ -275,7 +419,7 @@ export default function HomePage() {
           <div className="text-center mt-8">
             <Link
               to="/destinations"
-              className="inline-flex items-center text-pink-600 font-semibold hover:text-pink-700 transition"
+              className="inline-flex items-center text-[#ff6bd5] font-semibold hover:text-white transition"
             >
               View All Destinations <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
@@ -284,21 +428,21 @@ export default function HomePage() {
       </section>
 
       {/* Featured Packages */}
-      <section className="py-16 bg-gradient-to-b from-white to-gray-50 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary-50/30 via-transparent to-pink-50/30" />
+      <section className="py-20 relative overflow-hidden section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_75%,rgba(255,92,184,0.18),transparent_55%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-4">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">
               Popular Tour Packages
             </h2>
-            <p className="text-lg text-gray-600">Handpicked packages for unforgettable experiences</p>
+            <p className="text-lg text-white/70">Handpicked packages for unforgettable experiences</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {packages.map((pkg) => (
               <Link
                 key={pkg.id}
                 to={`/packages/${pkg.slug}`}
-                className="group backdrop-blur-lg bg-white/80 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-white/50 transform hover:scale-105 hover:-translate-y-2"
+                className="group glass-panel neon-hover rounded-2xl overflow-hidden border border-white/10"
               >
                 <div className="relative h-64 overflow-hidden">
                   <img
@@ -308,23 +452,23 @@ export default function HomePage() {
                   />
                 </div>
                 <div className="p-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-2">{pkg.title}</h3>
-                  <div className="flex items-center text-gray-600 mb-3">
+                  <h3 className="text-xl font-bold text-white mb-2">{pkg.title}</h3>
+                  <div className="flex items-center text-white/70 mb-3">
                     <Calendar className="w-4 h-4 mr-2" />
                     <span className="text-sm">
                       {pkg.duration_days}D/{pkg.duration_nights}N
                     </span>
                   </div>
-                  <p className="text-sm text-gray-600 mb-4 line-clamp-2">{pkg.highlights}</p>
+                  <p className="text-sm text-white/65 mb-4 line-clamp-2">{pkg.highlights}</p>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm text-gray-500">Starting from</p>
-                      <p className="text-2xl font-bold text-pink-600">
+                      <p className="text-sm text-white/60">Starting from</p>
+                      <p className="text-2xl font-bold text-[#ff6bd5]">
                         ₹{pkg.price_inr_min.toLocaleString("en-IN")}
                       </p>
-                      <p className="text-xs text-gray-500">per person</p>
+                      <p className="text-xs text-white/50">per person</p>
                     </div>
-                    <ArrowRight className="w-6 h-6 text-pink-600 group-hover:translate-x-2 transition" />
+                    <ArrowRight className="w-6 h-6 text-[#ff6bd5] group-hover:translate-x-2 transition" />
                   </div>
                 </div>
               </Link>
@@ -333,7 +477,7 @@ export default function HomePage() {
           <div className="text-center mt-8">
             <Link
               to="/packages"
-              className="inline-flex items-center text-pink-600 font-semibold hover:text-pink-700 transition"
+              className="inline-flex items-center text-[#ff6bd5] font-semibold hover:text-white transition"
             >
               View All Packages <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
@@ -342,18 +486,18 @@ export default function HomePage() {
       </section>
 
       {/* Testimonials */}
-      <section className="py-16 bg-gradient-to-b from-gray-50 to-white relative">
-        <div className="absolute inset-0 bg-gradient-to-br from-purple-50/30 via-transparent to-primary-50/30" />
+      <section className="py-20 relative section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_55%_20%,rgba(168,85,247,0.18),transparent_55%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-purple-600 to-primary-600 bg-clip-text text-transparent mb-4">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">
               What Our Travelers Say
             </h2>
-            <p className="text-lg text-gray-600">Real experiences from real travelers</p>
+            <p className="text-lg text-white/70">Real experiences from real travelers</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {testimonials.map((testimonial) => (
-              <div key={testimonial.id} className="backdrop-blur-lg bg-white/70 p-8 rounded-2xl shadow-lg hover:shadow-neon-pink transition-all duration-300 border border-white/50 transform hover:scale-105 hover:-translate-y-2">
+              <div key={testimonial.id} className="glass-panel neon-hover p-8 rounded-2xl border border-white/10">
                 <div className="flex items-center mb-4">
                   <img
                     src={testimonial.image_url}
@@ -361,8 +505,8 @@ export default function HomePage() {
                     className="w-16 h-16 rounded-full object-cover mr-4"
                   />
                   <div>
-                    <h4 className="font-semibold text-gray-900">{testimonial.customer_name}</h4>
-                    <p className="text-sm text-gray-600">{testimonial.location}</p>
+                    <h4 className="font-semibold text-white">{testimonial.customer_name}</h4>
+                    <p className="text-sm text-white/60">{testimonial.location}</p>
                   </div>
                 </div>
                 <div className="flex mb-4">
@@ -370,14 +514,14 @@ export default function HomePage() {
                     <Star key={i} className="w-5 h-5 text-yellow-400 fill-current" />
                   ))}
                 </div>
-                <p className="text-gray-700 italic">"{testimonial.quote}"</p>
+                <p className="text-white/70 italic">"{testimonial.quote}"</p>
               </div>
             ))}
           </div>
           <div className="text-center mt-8">
             <Link
               to="/testimonials"
-              className="inline-flex items-center text-pink-600 font-semibold hover:text-pink-700 transition"
+              className="inline-flex items-center text-[#ff6bd5] font-semibold hover:text-white transition"
             >
               Read More Reviews <ArrowRight className="ml-2 w-5 h-5" />
             </Link>
@@ -387,29 +531,30 @@ export default function HomePage() {
 
       {/* Special Offers */}
       {offers.length > 0 && (
-        <section className="py-16 bg-white">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <section className="py-20 relative section-reveal">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_25%_60%,rgba(255,92,184,0.16),transparent_55%)]" />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
             <div className="text-center mb-12">
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">Special Offers</h2>
-              <p className="text-lg text-gray-600">Limited time deals you don't want to miss</p>
+              <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">Special Offers</h2>
+              <p className="text-lg text-white/70">Limited time deals you don't want to miss</p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {offers.map((offer) => (
                 <div
                   key={offer.id}
-                  className="relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition"
+                  className="relative overflow-hidden rounded-2xl glass-panel neon-hover border border-white/10"
                 >
                   <img
                     src={offer.image_url}
                     alt={offer.title}
                     className="w-full h-64 object-cover"
                   />
-                  <div className="absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-full font-bold">
+                  <div className="absolute top-4 right-4 bg-[#ff4fd1] text-black px-4 py-2 rounded-full font-bold">
                     {offer.discount_percent}% OFF
                   </div>
-                  <div className="p-6 bg-white">
-                    <h3 className="text-xl font-bold text-gray-900 mb-2">{offer.title}</h3>
-                    <p className="text-gray-600">{offer.description}</p>
+                  <div className="p-6">
+                    <h3 className="text-xl font-bold text-white mb-2">{offer.title}</h3>
+                    <p className="text-white/70">{offer.description}</p>
                   </div>
                 </div>
               ))}
@@ -417,7 +562,7 @@ export default function HomePage() {
             <div className="text-center mt-8">
               <Link
                 to="/offers"
-                className="inline-flex items-center text-pink-600 font-semibold hover:text-pink-700 transition"
+                className="inline-flex items-center text-[#ff6bd5] font-semibold hover:text-white transition"
               >
                 View All Offers <ArrowRight className="ml-2 w-5 h-5" />
               </Link>
@@ -427,68 +572,72 @@ export default function HomePage() {
       )}
 
       {/* Founder Story */}
-      <section className="py-16 bg-gradient-to-br from-primary-600 to-primary-800 text-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-neon-pink/10 via-neon-purple/10 to-neon-blue/10 animate-pulse-slow" />
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+      <section className="py-20 relative overflow-hidden section-reveal">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#ff5cb8]/15 via-[#7f4dff]/20 to-[#22d3ee]/15 animate-pulse-slow" />
+        <div className="absolute inset-0 bg-[#0b0a12]/70" />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
           <div className="mb-8">
-            <div className="w-24 h-24 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-24 h-24 bg-white/10 rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_0_30px_rgba(255,92,184,0.35)]">
               <Users className="w-12 h-12 text-white" />
             </div>
           </div>
-          <p className="text-2xl md:text-3xl font-semibold mb-4 italic relative z-10">
+          <p className="text-2xl md:text-3xl font-semibold mb-4 italic">
             "Travel healed me. I built Novel Sphere Vacations so it can heal others too."
           </p>
-          <p className="text-lg text-primary-100 relative z-10">- Founder, Novel Sphere Vacations</p>
+          <p className="text-lg text-white/70">- Founder, Novel Sphere Vacations</p>
         </div>
       </section>
 
       {/* Newsletter */}
-      <section className="py-16 bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-            Subscribe to Our Newsletter
-          </h2>
-          <p className="text-lg text-gray-600 mb-8">
-            Get the latest travel tips, exclusive deals, and destination inspiration
-          </p>
-          <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Enter your email"
-              required
-              className="flex-1 px-6 py-3 rounded-full border border-gray-300 focus:outline-none focus:ring-2 focus:ring-pink-600"
-            />
-            <button
-              type="submit"
-              className="bg-pink-600 text-white px-8 py-3 rounded-full font-semibold hover:bg-pink-700 transition shadow-lg"
-            >
-              Subscribe
-            </button>
-          </form>
+      <section className="py-20 relative section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(255,92,184,0.12),transparent_55%)]" />
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative">
+          <div className="glass-panel rounded-3xl p-10 md:p-12 border border-white/10">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold text-white mb-4">
+              Subscribe to Our Newsletter
+            </h2>
+            <p className="text-lg text-white/70 mb-8">
+              Get the latest travel tips, exclusive deals, and destination inspiration
+            </p>
+            <form onSubmit={handleNewsletterSubmit} className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Enter your email"
+                required
+                className="flex-1 px-6 py-3 rounded-full border border-white/15 bg-white/5 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-[#ff6bd5]"
+              />
+              <button
+                type="submit"
+                className="cta-glow bg-gradient-to-r from-[#ff2d94] to-[#b44bff] text-black px-8 py-3 rounded-full font-semibold"
+              >
+                Subscribe
+              </button>
+            </form>
+          </div>
         </div>
       </section>
 
       {/* Contact CTA */}
-      <section className="py-16 bg-white relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-pink-50/50 via-white to-purple-50/50" />
+      <section className="py-20 relative overflow-hidden section-reveal">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_40%_60%,rgba(255,92,184,0.2),transparent_60%)]" />
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative">
-          <div className="backdrop-blur-xl bg-gradient-to-r from-pink-600/90 to-purple-600/90 rounded-3xl p-12 text-center text-white shadow-2xl border border-white/20 transform hover:scale-[1.02] transition-transform duration-300">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4 drop-shadow-lg">Ready to Start Your Journey?</h2>
-            <p className="text-xl text-white/90 mb-8 drop-shadow">
+          <div className="glass-panel rounded-3xl p-12 text-center border border-white/15 shadow-[0_0_60px_rgba(255,92,184,0.3)]">
+            <h2 className="neon-title text-3xl md:text-4xl font-semibold mb-4">Ready to Start Your Journey?</h2>
+            <p className="text-xl text-white/80 mb-8">
               Let our travel experts create the perfect itinerary for you
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link
                 to="/contact"
-                className="bg-white/95 backdrop-blur-sm text-gray-900 px-8 py-4 rounded-full font-semibold hover:bg-white transition-all duration-300 shadow-xl inline-block transform hover:scale-105 hover:-translate-y-1"
+                className="cta-glow bg-gradient-to-r from-[#ff2d94] to-[#b44bff] text-black px-8 py-4 rounded-full font-semibold inline-flex items-center justify-center"
               >
                 Get Free Consultation
               </Link>
               <a
                 href="tel:8248596124"
-                className="bg-white/10 backdrop-blur-md border-2 border-white/50 text-gray-900 px-8 py-4 rounded-full font-semibold hover:bg-white/20 transition-all duration-300 inline-block transform hover:scale-105 hover:-translate-y-1"
+                className="cta-glow bg-white/10 border border-white/30 text-white px-8 py-4 rounded-full font-semibold inline-flex items-center justify-center"
               >
                 Call 8248596124
               </a>

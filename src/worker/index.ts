@@ -1,14 +1,6 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import {
-  authMiddleware,
-  exchangeCodeForSessionToken,
-  getOAuthRedirectUrl,
-  deleteSession,
-  MOCHA_SESSION_TOKEN_COOKIE_NAME,
-} from "@getmocha/users-service/backend";
-import { getCookie, setCookie } from "hono/cookie";
 import { requirePermission, type Role } from "./rbac";
 import {
   createLeadSchema,
@@ -24,61 +16,158 @@ import {
   generateReferralCode,
 } from "./influencer";
 
-const app = new Hono<{ Bindings: Env }>();
+const app = new Hono<{
+  Bindings: Env;
+  Variables: {
+    user?: AccessUser;
+    adminRole?: Role;
+  };
+}>();
 
-// Auth endpoints
-app.get("/api/oauth/google/redirect_url", async (c) => {
-  const redirectUrl = await getOAuthRedirectUrl("google", {
-    apiUrl: c.env.MOCHA_USERS_SERVICE_API_URL,
-    apiKey: c.env.MOCHA_USERS_SERVICE_API_KEY,
-  });
-  return c.json({ redirectUrl }, 200);
-});
+type AccessUser = {
+  id: string;
+  email?: string;
+  name?: string;
+};
 
-app.post("/api/sessions", async (c) => {
-  const body = await c.req.json();
-  if (!body.code) {
-    return c.json({ error: "No authorization code provided" }, 400);
+const decodeAccessJwt = (jwt: string) => {
+  try {
+    const [, payload] = jwt.split(".");
+    if (!payload) {
+      return null;
+    }
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(padded)) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const getAccessHeader = (c: any, name: string) =>
+  c.req.header(name) || c.req.header(name.toLowerCase());
+
+const buildAccessUser = (c: any): AccessUser | null => {
+  const accessJwt = getAccessHeader(c, "CF-Access-Jwt-Assertion");
+  const accessEmail =
+    getAccessHeader(c, "Cf-Access-Authenticated-User-Email") ||
+    getAccessHeader(c, "CF-Access-Authenticated-User-Email");
+  const accessUserId =
+    getAccessHeader(c, "Cf-Access-Authenticated-User-Id") ||
+    getAccessHeader(c, "CF-Access-Authenticated-User-Id");
+  const payload = accessJwt ? decodeAccessJwt(accessJwt) : null;
+  const email =
+    (payload?.email as string | undefined) ||
+    (payload?.user_email as string | undefined) ||
+    accessEmail;
+  const name =
+    (payload?.name as string | undefined) ||
+    (payload?.user_name as string | undefined) ||
+    (payload?.preferred_username as string | undefined);
+  const id =
+    accessUserId ||
+    (payload?.sub as string | undefined) ||
+    email ||
+    (payload?.email as string | undefined);
+
+  if (!accessJwt && !accessEmail && !accessUserId) {
+    return null;
   }
 
-  const sessionToken = await exchangeCodeForSessionToken(body.code, {
-    apiUrl: c.env.MOCHA_USERS_SERVICE_API_URL,
-    apiKey: c.env.MOCHA_USERS_SERVICE_API_KEY,
-  });
+  return {
+    id: id || "unknown",
+    email,
+    name,
+  };
+};
 
-  setCookie(c, MOCHA_SESSION_TOKEN_COOKIE_NAME, sessionToken, {
-    httpOnly: true,
-    path: "/",
-    sameSite: "none",
-    secure: true,
-    maxAge: 60 * 24 * 60 * 60,
-  });
+const renderAccessRequiredPage = () => `
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Access Required</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Space Grotesk", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top, rgba(255, 90, 165, 0.25), transparent 55%),
+          radial-gradient(circle at 20% 20%, rgba(142, 45, 226, 0.4), transparent 45%),
+          #07060c;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        color: #f5f2ff;
+        background: inherit;
+      }
+      .panel {
+        width: min(560px, 90vw);
+        padding: 3rem;
+        border-radius: 28px;
+        background: rgba(12, 10, 20, 0.75);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        box-shadow: 0 0 60px rgba(255, 90, 165, 0.25);
+        backdrop-filter: blur(16px);
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 2rem;
+        letter-spacing: 0.02em;
+      }
+      p {
+        margin: 0.5rem 0;
+        color: rgba(245, 242, 255, 0.8);
+        line-height: 1.6;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
+        padding: 0.6rem 1.2rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: linear-gradient(120deg, rgba(255, 90, 165, 0.18), rgba(142, 45, 226, 0.2));
+      }
+    </style>
+  </head>
+  <body>
+    <div class="panel">
+      <h1>Access Required</h1>
+      <p>This route is protected by Cloudflare Zero Trust Access.</p>
+      <p>Please open the dashboard from your approved Access policy.</p>
+      <div class="pill">Protected Zone</div>
+    </div>
+  </body>
+</html>
+`;
 
-  return c.json({ success: true }, 200);
-});
+const accessMiddleware = async (c: any, next: any) => {
+  const accessUser = buildAccessUser(c);
+  if (!accessUser) {
+    if (!c.req.path.startsWith("/api")) {
+      return c.html(renderAccessRequiredPage(), 401);
+    }
+    return c.json({ error: "Access required" }, 401);
+  }
+  c.set("user", accessUser);
+  await next();
+};
 
-app.get("/api/users/me", authMiddleware, async (c) => {
+app.use("/admin", accessMiddleware);
+app.use("/admin/*", accessMiddleware);
+app.use("/staff", accessMiddleware);
+app.use("/staff/*", accessMiddleware);
+app.use("/api/admin/*", accessMiddleware);
+app.use("/api/staff/*", accessMiddleware);
+
+app.get("/api/me", accessMiddleware, async (c) => {
   return c.json(c.get("user"));
-});
-
-app.get("/api/logout", async (c) => {
-  const sessionToken = getCookie(c, MOCHA_SESSION_TOKEN_COOKIE_NAME);
-  if (typeof sessionToken === "string") {
-    await deleteSession(sessionToken, {
-      apiUrl: c.env.MOCHA_USERS_SERVICE_API_URL,
-      apiKey: c.env.MOCHA_USERS_SERVICE_API_KEY,
-    });
-  }
-
-  setCookie(c, MOCHA_SESSION_TOKEN_COOKIE_NAME, "", {
-    httpOnly: true,
-    path: "/",
-    sameSite: "none",
-    secure: true,
-    maxAge: 0,
-  });
-
-  return c.json({ success: true }, 200);
 });
 
 // Admin middleware - checks if user is an admin
@@ -272,7 +361,7 @@ app.post("/api/enquiries", zValidator("json", enquirySchema), async (c) => {
 });
 
 // Admin API endpoints
-app.get("/api/admin/check", authMiddleware, async (c) => {
+app.get("/api/admin/check", async (c) => {
   const user = c.get("user");
   if (!user) {
     return c.json({ isAdmin: false, role: null });
@@ -286,7 +375,7 @@ app.get("/api/admin/check", authMiddleware, async (c) => {
   return c.json({ isAdmin: !!result, role: result?.role || null });
 });
 
-app.get("/api/admin/dashboard", authMiddleware, adminMiddleware, async (c) => {
+app.get("/api/admin/dashboard", adminMiddleware, async (c) => {
   const destinationsCount = await c.env.DB.prepare(
     "SELECT COUNT(*) as count FROM destinations"
   ).first();
@@ -308,14 +397,14 @@ app.get("/api/admin/dashboard", authMiddleware, adminMiddleware, async (c) => {
   });
 });
 
-app.get("/api/admin/enquiries", authMiddleware, adminMiddleware, async (c) => {
+app.get("/api/admin/enquiries", adminMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM enquiries ORDER BY created_at DESC"
   ).all();
   return c.json(results);
 });
 
-app.patch("/api/admin/enquiries/:id/read", authMiddleware, adminMiddleware, async (c) => {
+app.patch("/api/admin/enquiries/:id/read", adminMiddleware, async (c) => {
   const id = c.req.param("id");
   const { isRead } = await c.req.json();
 
@@ -327,7 +416,7 @@ app.patch("/api/admin/enquiries/:id/read", authMiddleware, adminMiddleware, asyn
 });
 
 // Admin CRUD for destinations
-app.get("/api/admin/destinations", authMiddleware, adminMiddleware, async (c) => {
+app.get("/api/admin/destinations", adminMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM destinations ORDER BY display_order ASC"
   ).all();
@@ -346,7 +435,7 @@ const destinationSchema = z.object({
   display_order: z.number().optional(),
 });
 
-app.post("/api/admin/destinations", authMiddleware, adminMiddleware, zValidator("json", destinationSchema), async (c) => {
+app.post("/api/admin/destinations", adminMiddleware, zValidator("json", destinationSchema), async (c) => {
   const data = c.req.valid("json");
   const result = await c.env.DB.prepare(
     `INSERT INTO destinations (name, slug, description, image_url, region, country, is_featured, is_popular, display_order)
@@ -368,7 +457,7 @@ app.post("/api/admin/destinations", authMiddleware, adminMiddleware, zValidator(
   return c.json({ success: true, id: result.meta.last_row_id }, 201);
 });
 
-app.put("/api/admin/destinations/:id", authMiddleware, adminMiddleware, zValidator("json", destinationSchema), async (c) => {
+app.put("/api/admin/destinations/:id", adminMiddleware, zValidator("json", destinationSchema), async (c) => {
   const id = c.req.param("id");
   const data = c.req.valid("json");
 
@@ -393,14 +482,14 @@ app.put("/api/admin/destinations/:id", authMiddleware, adminMiddleware, zValidat
   return c.json({ success: true });
 });
 
-app.delete("/api/admin/destinations/:id", authMiddleware, adminMiddleware, async (c) => {
+app.delete("/api/admin/destinations/:id", adminMiddleware, async (c) => {
   const id = c.req.param("id");
   await c.env.DB.prepare("DELETE FROM destinations WHERE id = ?").bind(id).run();
   return c.json({ success: true });
 });
 
 // Admin CRUD for packages
-app.get("/api/admin/packages", authMiddleware, adminMiddleware, async (c) => {
+app.get("/api/admin/packages", adminMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM packages ORDER BY created_at DESC"
   ).all();
@@ -424,7 +513,7 @@ const packageSchema = z.object({
   is_featured: z.boolean().optional(),
 });
 
-app.post("/api/admin/packages", authMiddleware, adminMiddleware, zValidator("json", packageSchema), async (c) => {
+app.post("/api/admin/packages", adminMiddleware, zValidator("json", packageSchema), async (c) => {
   const data = c.req.valid("json");
   const result = await c.env.DB.prepare(
     `INSERT INTO packages (title, slug, destination_slug, duration_days, duration_nights, price_inr_min, price_inr_max,
@@ -452,7 +541,7 @@ app.post("/api/admin/packages", authMiddleware, adminMiddleware, zValidator("jso
   return c.json({ success: true, id: result.meta.last_row_id }, 201);
 });
 
-app.put("/api/admin/packages/:id", authMiddleware, adminMiddleware, zValidator("json", packageSchema), async (c) => {
+app.put("/api/admin/packages/:id", adminMiddleware, zValidator("json", packageSchema), async (c) => {
   const id = c.req.param("id");
   const data = c.req.valid("json");
 
@@ -483,14 +572,14 @@ app.put("/api/admin/packages/:id", authMiddleware, adminMiddleware, zValidator("
   return c.json({ success: true });
 });
 
-app.delete("/api/admin/packages/:id", authMiddleware, adminMiddleware, async (c) => {
+app.delete("/api/admin/packages/:id", adminMiddleware, async (c) => {
   const id = c.req.param("id");
   await c.env.DB.prepare("DELETE FROM packages WHERE id = ?").bind(id).run();
   return c.json({ success: true });
 });
 
 // Admin settings
-app.put("/api/admin/settings", authMiddleware, adminMiddleware, async (c) => {
+app.put("/api/admin/settings", adminMiddleware, async (c) => {
   const data = await c.req.json();
   
   await c.env.DB.prepare(
@@ -512,7 +601,7 @@ app.put("/api/admin/settings", authMiddleware, adminMiddleware, async (c) => {
 // ===== CRM API Endpoints =====
 
 // CRM Dashboard stats
-app.get("/api/admin/crm/dashboard", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/crm/dashboard", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   // Stage counts
   const stageCounts = await c.env.DB.prepare(`
     SELECT stage, COUNT(*) as count FROM leads GROUP BY stage
@@ -558,7 +647,7 @@ app.get("/api/admin/crm/dashboard", authMiddleware, adminMiddleware, requirePerm
 });
 
 // Get all leads with filters
-app.get("/api/admin/crm/leads", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/crm/leads", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const stage = c.req.query("stage");
   const assignedTo = c.req.query("assigned_to");
   const source = c.req.query("source");
@@ -592,7 +681,7 @@ app.get("/api/admin/crm/leads", authMiddleware, adminMiddleware, requirePermissi
 });
 
 // Get single lead with activities
-app.get("/api/admin/crm/leads/:id", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/crm/leads/:id", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const id = c.req.param("id");
   
   const lead = await c.env.DB.prepare("SELECT * FROM leads WHERE id = ?").bind(id).first();
@@ -611,7 +700,7 @@ app.get("/api/admin/crm/leads/:id", authMiddleware, adminMiddleware, requirePerm
 });
 
 // Create new lead
-app.post("/api/admin/crm/leads", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'create'), zValidator("json", createLeadSchema), async (c) => {
+app.post("/api/admin/crm/leads", adminMiddleware, requirePermissionMiddleware('leads', 'create'), zValidator("json", createLeadSchema), async (c) => {
   const data = c.req.valid("json");
   const user = c.get("user");
   
@@ -649,7 +738,7 @@ app.post("/api/admin/crm/leads", authMiddleware, adminMiddleware, requirePermiss
 });
 
 // Update lead
-app.put("/api/admin/crm/leads/:id", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), zValidator("json", updateLeadSchema), async (c) => {
+app.put("/api/admin/crm/leads/:id", adminMiddleware, requirePermissionMiddleware('leads', 'update'), zValidator("json", updateLeadSchema), async (c) => {
   const id = c.req.param("id");
   const data = c.req.valid("json");
   const user = c.get("user");
@@ -710,7 +799,7 @@ app.put("/api/admin/crm/leads/:id", authMiddleware, adminMiddleware, requirePerm
 });
 
 // Add activity to lead
-app.post("/api/admin/crm/leads/:id/activities", authMiddleware, adminMiddleware, zValidator("json", createActivitySchema), async (c) => {
+app.post("/api/admin/crm/leads/:id/activities", adminMiddleware, zValidator("json", createActivitySchema), async (c) => {
   const id = c.req.param("id");
   const data = c.req.valid("json");
   const user = c.get("user");
@@ -725,7 +814,7 @@ app.post("/api/admin/crm/leads/:id/activities", authMiddleware, adminMiddleware,
 });
 
 // Convert lead to booking
-app.post("/api/admin/crm/leads/:id/convert", authMiddleware, adminMiddleware, requirePermissionMiddleware('bookings', 'create'), async (c) => {
+app.post("/api/admin/crm/leads/:id/convert", adminMiddleware, requirePermissionMiddleware('bookings', 'create'), async (c) => {
   const id = c.req.param("id");
   const user = c.get("user");
   
@@ -769,14 +858,14 @@ app.post("/api/admin/crm/leads/:id/convert", authMiddleware, adminMiddleware, re
 
 // ===== Team & Roles Management =====
 
-app.get("/api/admin/team", authMiddleware, adminMiddleware, async (c) => {
+app.get("/api/admin/team", adminMiddleware, async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM admin_roles ORDER BY created_at DESC"
   ).all();
   return c.json(results);
 });
 
-app.post("/api/admin/team", authMiddleware, adminMiddleware, async (c) => {
+app.post("/api/admin/team", adminMiddleware, async (c) => {
   const user = c.get("user");
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -802,7 +891,7 @@ app.post("/api/admin/team", authMiddleware, adminMiddleware, async (c) => {
   return c.json({ success: true, id: result.meta.last_row_id }, 201);
 });
 
-app.put("/api/admin/team/:id", authMiddleware, adminMiddleware, async (c) => {
+app.put("/api/admin/team/:id", adminMiddleware, async (c) => {
   const user = c.get("user");
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -828,7 +917,7 @@ app.put("/api/admin/team/:id", authMiddleware, adminMiddleware, async (c) => {
   return c.json({ success: true });
 });
 
-app.delete("/api/admin/team/:id", authMiddleware, adminMiddleware, async (c) => {
+app.delete("/api/admin/team/:id", adminMiddleware, async (c) => {
   const user = c.get("user");
   if (!user) {
     return c.json({ error: "Unauthorized" }, 401);
@@ -906,7 +995,7 @@ app.get("/api/influencer/validate", async (c) => {
 });
 
 // Admin: Get influencer requests
-app.get("/api/admin/influencer-requests", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/influencer-requests", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const status = c.req.query("status");
   
   let query = "SELECT * FROM influencer_requests";
@@ -924,7 +1013,7 @@ app.get("/api/admin/influencer-requests", authMiddleware, adminMiddleware, requi
 });
 
 // Admin: Approve/reject influencer request
-app.patch("/api/admin/influencer-requests/:id", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
+app.patch("/api/admin/influencer-requests/:id", adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
   const id = c.req.param("id");
   const { status, commission_type, commission_value } = await c.req.json();
   const user = c.get("user");
@@ -975,7 +1064,7 @@ app.patch("/api/admin/influencer-requests/:id", authMiddleware, adminMiddleware,
 });
 
 // Admin: Get all influencers
-app.get("/api/admin/influencers", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/influencers", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const { results } = await c.env.DB.prepare(
     "SELECT * FROM influencers ORDER BY created_at DESC"
   ).all();
@@ -983,7 +1072,7 @@ app.get("/api/admin/influencers", authMiddleware, adminMiddleware, requirePermis
 });
 
 // Admin: Create influencer manually
-app.post("/api/admin/influencers", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'create'), zValidator("json", createInfluencerSchema), async (c) => {
+app.post("/api/admin/influencers", adminMiddleware, requirePermissionMiddleware('leads', 'create'), zValidator("json", createInfluencerSchema), async (c) => {
   const data = c.req.valid("json");
   const user = c.get("user");
   
@@ -1021,7 +1110,7 @@ app.post("/api/admin/influencers", authMiddleware, adminMiddleware, requirePermi
 });
 
 // Admin: Update influencer
-app.patch("/api/admin/influencers/:id", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), zValidator("json", updateInfluencerSchema), async (c) => {
+app.patch("/api/admin/influencers/:id", adminMiddleware, requirePermissionMiddleware('leads', 'update'), zValidator("json", updateInfluencerSchema), async (c) => {
   const id = c.req.param("id");
   const data = c.req.valid("json");
   const user = c.get("user");
@@ -1054,7 +1143,7 @@ app.patch("/api/admin/influencers/:id", authMiddleware, adminMiddleware, require
 });
 
 // Admin: Get influencer analytics
-app.get("/api/admin/influencer-analytics", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/influencer-analytics", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const totalInfluencers = await c.env.DB.prepare(
     "SELECT COUNT(*) as count FROM influencers WHERE status = 'active'"
   ).first();
@@ -1096,7 +1185,7 @@ app.get("/api/admin/influencer-analytics", authMiddleware, adminMiddleware, requ
 });
 
 // Admin: Create payout
-app.post("/api/admin/influencer-payouts/create", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
+app.post("/api/admin/influencer-payouts/create", adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
   const { influencer_id, period_start, period_end } = await c.req.json();
   const user = c.get("user");
 
@@ -1136,7 +1225,7 @@ app.post("/api/admin/influencer-payouts/create", authMiddleware, adminMiddleware
 });
 
 // Admin: Mark payout as paid
-app.patch("/api/admin/influencer-payouts/:id/mark-paid", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
+app.patch("/api/admin/influencer-payouts/:id/mark-paid", adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
   const id = c.req.param("id");
   const { notes } = await c.req.json();
   const user = c.get("user");
@@ -1171,7 +1260,7 @@ app.patch("/api/admin/influencer-payouts/:id/mark-paid", authMiddleware, adminMi
 });
 
 // Admin: Get payouts
-app.get("/api/admin/influencer-payouts", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
+app.get("/api/admin/influencer-payouts", adminMiddleware, requirePermissionMiddleware('leads', 'read'), async (c) => {
   const influencer_id = c.req.query("influencer_id");
   
   let query = `
@@ -1214,7 +1303,7 @@ app.get("/api/legal/:type", async (c) => {
 });
 
 // Admin: Update legal document
-app.patch("/api/admin/legal/:type", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
+app.patch("/api/admin/legal/:type", adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
   const type = c.req.param("type");
   const user = c.get("user");
   
@@ -1254,7 +1343,7 @@ app.patch("/api/admin/legal/:type", authMiddleware, adminMiddleware, requirePerm
 });
 
 // Admin: Upload PDF for legal document
-app.post("/api/admin/legal/:type/upload-pdf", authMiddleware, adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
+app.post("/api/admin/legal/:type/upload-pdf", adminMiddleware, requirePermissionMiddleware('leads', 'update'), async (c) => {
   const type = c.req.param("type");
   const user = c.get("user");
   
